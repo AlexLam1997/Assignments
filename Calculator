@@ -1,0 +1,403 @@
+//node class used by the queue and stack in order to implement the linked lists
+// has a string element and a link to the next element in the list 
+public class node {
+	
+	String payload; 
+	node next; 
+}
+//a queue class with enqueue and dequeue methods associated with it
+//implemented as a linked list
+//first in first out -> keep track of front and rear 
+//add to rear, remove from front
+public class queue {
+	node front = null;  
+	node rear = null; 
+	
+// enqueue method adds a node to the END of the linked list
+// if list is empty, ass node and associates the front with it
+// the new node is added to the rear, so it becomes the new rear 
+	void enqueue(String arg) {
+		node newnode = new node(); 
+		newnode.payload = arg;
+		newnode.next = null;
+			if (rear !=null) 
+				rear.next = newnode;
+				else 
+					front = newnode; 
+		rear = newnode; 
+	}
+
+// returns the payload of the node at the front of the linked list and the next node becomes the front
+// if the list (queue) is empty, returns null 
+	String dequeue() {
+		if (front == null) 
+			return null;
+			else {
+				node buffer = front;
+				String elem = buffer.payload;
+				front = buffer.next;
+				if (buffer == rear)
+					rear = null;
+				return elem;
+			}
+	}
+}
+
+/*
+Written by Alex Lam 263746239 for ECSE 202
+
+Program creates a basic calculator gui which allows user to input a infix notation
+expression by pressing buttons and then computes the result of this expression
+once the equals key is pressed and "prints" the result into a separate textfield
+user is expected to know correct form of input
+in order for decimals dictated by slider to be applied must refresh aka hit = again
+after changing slider
+accepts negative numbers,exponents and parentheses
+
+"compute" has been modified from previous calc class to return a double
+also compute acts in such a way that all data structures are empty once compute exits
+so there is no need to clear data structures before another operation can be performed
+details below
+details of what every button does below
+
+added in a factorial button to try it out but it only works when I surround the
+factorial with parentheses, would be appreciate if you could find what is wrong
+here if you can
+ */
+
+import javax.swing.*;
+//for some reason import .* doesnt work so import individually
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import acm.graphics.*;
+import acm.gui.TableLayout;
+import acm.program.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.util.StringTokenizer;
+
+public class Calculator extends Program {
+    /*
+    creation of data structs:
+    2 textfields, one for input, one for result of computation
+
+    expression holds the input string
+
+    recreate data structures used by previous in2pJ and calc classes
+    result is where result of computations done in calc class are found
+    inq is input queue for in2pJ where prefix notation expression is found
+    outq is output where postfix expression is placed
+    stack is operator stack used by in2pJ
+
+    set string expression blank at first because no input yet
+
+    ints min and max are delimiters for the minimum and maximum number of decimals
+    that can be asked for
+
+    textfield sliderbox holds value of the slider
+   */
+    private TextField input = new TextField();
+    private TextField output = new TextField();
+    String expression="";
+    stack result= new stack();
+    queue inq= new queue();
+    queue outq= new queue();
+    stack stack= new stack();
+    int min = 0;
+    int max = 16;
+    int slidervalue=3;
+    private TextField sliderbox= new TextField(String.valueOf(slidervalue));
+
+    public void init() {
+        TableLayout layout= new TableLayout(10,4,2,2);
+        setLayout(layout);
+    //setting input to editable allows user to type in their input WITHOUT an = sign
+    //assumes user still knows correct form of input
+        input.setEditable(true);
+        output.setEditable(false);
+        input.setPreferredSize(new Dimension(10, 30));
+        output.setPreferredSize(new Dimension(10, 30));
+    //add textfields
+        add(input,"Gridwidth=4");
+        add(output,"gridwidth=4");
+        String constraints="width=55 height=30";
+    //string array containing strings that will be labels of buttons
+        String[] buttons={"^","(",")","/","7","8","9","x","4","5","6","+","1","2","3","-","0",".","=","C"};
+    //creates and adds buttons
+        for (int i=0; i<buttons.length;i++)
+            add(new JButton(buttons[i]),constraints);
+    //makes a non visible lable to make the calc prettier
+        JLabel blank = new JLabel("");
+        blank.setVisible(false);
+        add(blank, "gridwidth=1");
+    //details of what these buttons do in section below
+        add(new JButton("ans"),constraints);
+        add(new JButton("!"),constraints);
+        add(new JButton("Dlt"),constraints);
+        JSlider precision = new JSlider(JSlider.HORIZONTAL,min,max,slidervalue);
+        precision.setMajorTickSpacing(1);
+        precision.setPaintTicks(true);
+        JLabel Plabel = new JLabel("Precision");
+        Plabel.setFont(Plabel.getFont().deriveFont(11f));
+        add(Plabel,"gridwidth=1");
+        add(precision,"gridwidth=2");
+        add(sliderbox,"gridwidth=1");
+    //listener for slider, when change detected:
+    //sets slidervalue equal to the value of the slide and
+    //"prints" slidervalue in sliderbox
+    //sets output text to formatted value of compute result, allows for dynamic
+    //change of the precision of the answer
+        precision.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent e) {
+                slidervalue=precision.getValue();
+                sliderbox.setText(String.valueOf(slidervalue));
+                output.setText(String.format("%1$." + slidervalue + "f", compute(expression)));
+            }
+        });
+        addActionListeners();
+    }
+    /*
+    action when button press is triggered cases: clear(C),equals(=),
+    answer(ans), delete(Dlt) and default(any other button)
+    "C" clears the input&output textfields
+    "=" computes the expression in the input field (without the equals) then
+    formats the result into a string with "slidervalue" number of decimals
+    before "printing" it to the output field.
+    special case of when = key is hit: if input box contains only "ans" ->
+    output = expression
+    default:sets the expression string equal to the result of the concatenation
+    of previous expression and cmd,then prints this to the input
+    this is done so we can do multiple operations successively without needing
+    to clear first
+    case"Dlt" deletes the last entry(including the "=" if one remains from a
+    previous operation)
+    case "ans" make expression equal to result of previous computation and clear
+    output. done in order to set up previous result further operations
+    */
+    public void actionPerformed(ActionEvent e){
+        String cmd = e.getActionCommand();
+        switch(cmd){
+            case("C"):
+                expression="";
+                input.setText("");
+                output.setText("");
+                break;
+            case("="):
+                if(input.getText().equals("ans")){
+                    if(expression.equals("")) {
+                        expression = "0";
+                        output.setText(expression);
+                    }else {
+                        input.setText("ans=");
+                        output.setText(expression);
+                    }
+                }else {
+                    //gets text from input field-> allows for user to type in
+                    //expression to calcule
+                    expression = input.getText();
+                    input.setText(expression + "=");
+                    //formats output to certain number of decimals dictated by
+                    // the position of the slider
+                    output.setText(String.format("%1$." + slidervalue + "f", compute(expression)));
+                }
+                break;
+            case("Dlt"):
+                //cuts off 1 element of expression string
+                if(input.getText().equals("ans"))
+                    expression="";
+                else
+                    expression=expression.substring(0,expression.length()-1);
+                input.setText(expression);
+                break;
+            case("ans"):
+                expression=output.getText();
+                input.setText("ans");
+                output.setText("");
+                break;
+            default:
+                expression+=cmd;
+                input.setText(expression);
+                break;
+        }
+    }
+    /*computes the value of an expression given in infix notation and returns
+    this value in form of a double*/
+    public double compute(String args) {
+    //convert to postfix
+        In2p(args);
+    /*
+    while the outputq isnt null and the token at its front is not an operator
+    dequeue it and push it onto the result stack. if the element
+    is an operator, dequeue it & pop the stack twice to get 2 operands,
+    perform the operation and push the result on to the "result" stack.
+    repeat until output queue is empty.
+    when it is empty, return the top of the result stack and pop it,
+    in this way all data structures are empty once computation has been handled
+    and so there is no need to clear data structures before another operation
+    can be performed
+    */
+        while(outq.front != null) {
+            if(outq.front.payload != null) {
+                while (isoperatorprecedance(outq.front.payload) == 0) {
+                    result.push(outq.dequeue());
+                }
+            }
+            switch (outq.front.payload) {
+                case ("+"):
+                    outq.dequeue();
+                    result.push(tostring(todouble(result.pop())+todouble(result.pop())));
+                    break;
+                case ("-"):
+                    outq.dequeue();
+                    double a = todouble(result.pop());
+                    double b = todouble(result.pop());
+                    result.push(tostring(b-a));
+                    break;
+                case ("x"):
+                    outq.dequeue();
+                    result.push(tostring(todouble(result.pop())*todouble(result.pop())));
+                    break;
+                case ("/"):
+                    outq.dequeue();
+                    double c = todouble(result.pop());
+                    double d = todouble(result.pop());
+                    result.push(tostring(d/c));
+                    break;
+                case ("^"):
+                    outq.dequeue();
+                    double e = todouble(result.pop());
+                    double f = todouble(result.pop());
+                    result.push(tostring(exponential(f,e)));
+                    break;
+                case("!"):
+                    outq.dequeue();
+                    double g = todouble(result.pop());
+                    result.push(tostring(fact(g)));
+                    break;
+            }
+        }
+            return (todouble(result.pop()));
+    }
+
+    static double fact(double args) {
+        double result;
+        if(args==0)
+            return 0;
+        if(args==1)
+            return 1;
+        result = fact(args-1)*args;
+        return result;
+
+    }
+
+    //Converts string to double and returns the double
+    static double todouble(String args){
+        return Double.valueOf(args);
+    }
+    //converts double to string & returns the string
+    static String tostring(double arg){
+        return String.valueOf(arg);
+    }
+
+    //returns result of an exponential of 2 arguments
+    static double exponential(double a, double b) {
+        double c = Math.pow(a, b);
+        return c;
+    }
+    //converts infix expression to postfix notation
+    public void In2p(String joined) {
+        boolean unary = true; //initiate it to true because if operator is first element of queue it is unary
+        StringTokenizer st = new StringTokenizer(joined,"+-x/^()!",true);
+        while (st.hasMoreTokens()){
+            inq.enqueue(st.nextToken());
+        }
+        //ffg while loop dequeues tokens from inputq one by one, tests them and acts
+        // accordingly until input is empty
+
+        //a + or - operator is binary ifF it follows an operand or a right parentheses
+        // and it is unary otherwise.
+        //in the ffg while loop, every time a token is dequeued the value of
+        //unary is changed. unary will be set to false if the token dequeued is an
+        //operator or a right parenthesis and will be set to true otherwise.
+        //also initialised to true to take into account the case that if the operator
+        // is the first token of the queue it is also unary
+
+        while (inq.front != null) {
+            String token = inq.dequeue();
+            String unarytoken;
+            int opprec = isoperatorprecedance(token);
+
+            if (opprec == 0) { //token is not operator
+                outq.enqueue(token); //enqueue token directly to output q
+                unary = false;
+            } else {
+                if ((token.equals("-") || token.equals("+")) && unary) {
+                    unarytoken = token + inq.dequeue();
+                    outq.enqueue(unarytoken);
+                    unary = false;
+                }else {
+                    if (stack.top == null) {//token is operator
+                        stack.push(token); //if stack empty, push token
+                        unary = true;
+                    } else {
+                        //if its a LEFT parenthesis push onto stack regardless of precedence of what is on stack
+                        if (opprec == 1) {
+                            stack.push(token);
+                            unary = true;
+                        }
+                        //if its a RIGHT parenthesis
+                        else if (opprec == 9) {
+                            unary = false;
+                            //keep enqueueing result of stack pop until left parenthesis found
+                            while (isoperatorprecedance(stack.top.payload) != 1) {
+                                outq.enqueue(stack.pop());
+                            }
+                            //when left parenthesis is found, just pop it off stack without enqueue-ing it to the outq
+                            //(prefix notation doesnt have parenthesis)
+                            if (isoperatorprecedance(stack.top.payload) == 1) {
+                                stack.pop();
+                            }
+                        } else { //operator is not parenthesis
+                            //the token is operator
+                            unary = true;
+                            //while prec token <= prec of what is on top of stack, enqueue result of pop stack to outq
+                            while (stack.top != null && opprec <= isoperatorprecedance(stack.top.payload) && opprec != 9) {
+                                outq.enqueue(stack.pop());
+                            }
+                            //push token on stack once its prec is greater
+                            stack.push(token);
+                        }
+                    }
+                }
+            }
+        }
+
+        //once inputq is empty tokens have been sorted,
+        //pop the rest out of stack and enqueue onto outputq
+        while (stack.top != null) {
+            outq.enqueue(stack.pop());
+        }
+
+    }
+
+    /* Method isoperatorprecedence checks if token is an operator
+    and if it is, returns level of precedence of operator
+    but if its not then returns 0*/
+    static int isoperatorprecedance(String arg) {
+        if ((arg).equals("+") || (arg).equals("-"))
+            return 2;
+        else if ((arg).equals("x") || (arg).equals("/"))
+            return 3;
+        else if ((arg).equals("("))
+            return 1;
+        else if ((arg).equals(")"))
+            return 9;
+        else if ((arg).equals("^"))
+            return 4;
+        else if((arg).equals("!"))
+            return 5;
+        else
+            return 0;
+    }
+}
